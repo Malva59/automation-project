@@ -1,7 +1,7 @@
 import os
 import discord
 
-from scraper import scrape_genshin_codes
+from scraper import scrape_all_codes
 from database import get_new_codes, mark_code_as_known
 
 
@@ -10,17 +10,23 @@ CHANNEL_ID = int(os.environ["DISCORD_CHANNEL_ID"])
 
 
 def get_codes_to_publish():
-    print("Recherche des codes Genshin...")
+    print("Recherche des codes...")
 
-    codes = scrape_genshin_codes()
+    all_codes = scrape_all_codes()
 
-    print(f"Codes trouvés : {len(codes)}")
+    codes_to_publish = {}
 
-    new_codes = get_new_codes(codes)
+    for game, codes in all_codes.items():
+        print(f"{game} : {len(codes)} codes trouvés")
 
-    print(f"Nouveaux codes : {len(new_codes)}")
+        new_codes = get_new_codes(game, codes)
 
-    return new_codes
+        print(f"{game} : {len(new_codes)} nouveaux codes")
+
+        if new_codes:
+            codes_to_publish[game] = new_codes
+
+    return codes_to_publish
 
 
 class GenshinBot(discord.Client):
@@ -33,23 +39,28 @@ class GenshinBot(discord.Client):
 
             print(f"Salon trouvé : #{channel.name}")
 
-            for code in new_codes:
+            for game, codes in codes_to_publish.items():
 
-                message = (
-                    "🎁 **Nouveau code Genshin Impact !**\n\n"
-                    f"```{code}```\n"
-                    "🎮 Pense à l'utiliser rapidement !"
-                )
+                for code in codes:
 
-                await channel.send(message)
+                    if game == "Genshin Impact":
+                        emoji = "🎮"
+                    else:
+                        emoji = "🚂"
 
-                print(f"Code publié : {code}")
+                    message = (
+                        f"{emoji} **Nouveau code {game} !**\n\n"
+                        f"```{code}```\n"
+                        "🎁 Pense à l'utiliser rapidement !"
+                    )
 
-                # Le code est marqué comme connu uniquement
-                # après l'envoi réussi sur Discord.
-                mark_code_as_known(code)
+                    await channel.send(message)
 
-            print("Tous les nouveaux codes ont été publiés.")
+                    print(f"Code publié ({game}) : {code}")
+
+                    mark_code_as_known(game, code)
+
+            print("Tous les nouveaux codes ont été traités.")
 
         except discord.NotFound:
             print("ERREUR : salon Discord introuvable.")
@@ -67,29 +78,27 @@ class GenshinBot(discord.Client):
             await self.close()
 
 
-# --------------------------------------------------
-# Recherche des codes AVANT de démarrer Discord.
-# Cela évite de mélanger Playwright Sync et asyncio.
-# --------------------------------------------------
-
 try:
-    new_codes = get_codes_to_publish()
+    codes_to_publish = get_codes_to_publish()
 
 except Exception as error:
     print(f"ERREUR pendant la recherche des codes : {error}")
     raise
 
 
-# S'il n'y a aucun nouveau code, inutile de connecter
-# le bot à Discord.
-if not new_codes:
+if not codes_to_publish:
 
     print("Aucun nouveau code à publier.")
     print("Fin du workflow.")
 
 else:
 
-    print(f"{len(new_codes)} code(s) à publier.")
+    total = sum(
+        len(codes)
+        for codes in codes_to_publish.values()
+    )
+
+    print(f"{total} code(s) à publier.")
 
     intents = discord.Intents.none()
 

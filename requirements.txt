@@ -1,0 +1,4 @@
+discord-webhook
+playwright
+beautifulsoup4
+requests

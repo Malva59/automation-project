@@ -1,9 +1,6 @@
 name: Test Crimson Witch
 
 on:
-  schedule:
-    - cron: "*/10 * * * *"
-
   workflow_dispatch:
 
 permissions:
@@ -30,6 +27,12 @@ jobs:
 
       - name: Tester Crimson Witch
         run: python test_scraper.py
+
+      - name: Tester Discord
+        env:
+          DISCORD_TOKEN: ${{ secrets.DISCORD_TOKEN }}
+          DISCORD_CHANNEL_ID: ${{ secrets.DISCORD_CHANNEL_ID }}
+        run: python test_discord.py
 
       - name: Sauvegarder les codes connus
         run: |

@@ -1,26 +1,49 @@
-name: Genshin & Star Rail Code Tracker v2
+name: Genshin & Star Rail Codes
 
 on:
   schedule:
-    - cron: "*/5 * * * *"
+    - cron: "*/15 * * * *"
 
   workflow_dispatch:
+
+concurrency:
+  group: codes-bot
+  cancel-in-progress: false
 
 permissions:
   contents: write
 
 jobs:
-  bot:
+
+  run-bot:
+
     runs-on: ubuntu-latest
 
     steps:
+
+      # ==========================================
+      # RÉCUPÉRER LE PROJET
+      # ==========================================
+
       - name: Récupérer le code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+
+      # ==========================================
+      # INSTALLER PYTHON
+      # ==========================================
 
       - name: Installer Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+
+
+      # ==========================================
+      # INSTALLER LES DÉPENDANCES
+      # ==========================================
 
       - name: Installer les dépendances
         run: |
@@ -28,22 +51,52 @@ jobs:
           pip install -r requirements.txt
           playwright install --with-deps chromium
 
+
+      # ==========================================
+      # LANCER LE BOT
+      # ==========================================
+
       - name: Lancer le bot
         env:
           DISCORD_TOKEN: ${{ secrets.DISCORD_TOKEN }}
-          DISCORD_CHANNEL_ID: ${{ secrets.DISCORD_CHANNEL_ID }}
-        run: python bot.py
+        run: |
+          python bot.py
+
+
+      # ==========================================
+      # SAUVEGARDER LES CODES CONNUS
+      # ==========================================
 
       - name: Sauvegarder les codes connus
         run: |
+
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          git add known_codes.json
+          git add .
 
-          if git diff --cached --quiet; then
-            echo "Aucun nouveau code à sauvegarder."
-          else
-            git commit -m "Update known Genshin and Star Rail codes"
-            git push
-          fi
+          git diff --cached --quiet || git commit -m "Update known Genshin and Star Rail codes"
+
+          git pull --rebase origin main
+
+          git push origin main
+
+
+      # ==========================================
+      # POST INSTALLER PYTHON
+      # ==========================================
+
+      - name: Post Installer Python
+        if: always()
+        run: |
+          echo "Python terminé"
+
+
+      # ==========================================
+      # POST RÉCUPÉRER LE CODE
+      # ==========================================
+
+      - name: Post Récupérer le code
+        if: always()
+        run: |
+          echo "Récupération terminée"

@@ -1,0 +1,26 @@
+name: Test Crimson Witch
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Récupérer le code
+        uses: actions/checkout@v4
+
+      - name: Installer Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Installer les dépendances
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          playwright install --with-deps chromium
+
+      - name: Tester Crimson Witch
+        run: python test_scraper.py

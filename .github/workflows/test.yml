@@ -1,6 +1,9 @@
-name: Genshin Code Tracker
+name: Genshin & Star Rail Code Tracker
 
 on:
+  schedule:
+    - cron: "*/10 * * * *"
+
   workflow_dispatch:
 
 permissions:
@@ -41,6 +44,6 @@ jobs:
           if git diff --cached --quiet; then
             echo "Aucun nouveau code à sauvegarder."
           else
-            git commit -m "Update known Genshin codes"
+            git commit -m "Update known Genshin and Star Rail codes"
             git push
           fi

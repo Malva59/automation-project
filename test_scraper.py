@@ -1,8 +1,6 @@
 from scraper import scrape_genshin_codes
-from database import init_database, get_new_codes, save_code
+from database import get_new_codes
 
-
-init_database()
 
 codes = scrape_genshin_codes()
 
@@ -13,4 +11,3 @@ print(f"Nouveaux codes : {len(new_codes)}")
 
 for code in new_codes:
     print(f"Nouveau : {code}")
-    save_code(code)

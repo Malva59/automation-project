@@ -1,60 +1,44 @@
-import sqlite3
+import json
+from pathlib import Path
 
-DATABASE = "codes.db"
+DATABASE = Path("known_codes.json")
 
 
-def init_database():
-    connection = sqlite3.connect(DATABASE)
+def load_codes():
+    if not DATABASE.exists():
+        return set()
 
-    cursor = connection.cursor()
+    try:
+        with DATABASE.open("r", encoding="utf-8") as file:
+            data = json.load(file)
 
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS codes (
-            code TEXT PRIMARY KEY,
-            first_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        return set(data)
+
+    except (json.JSONDecodeError, TypeError):
+        return set()
+
+
+def save_codes(codes):
+    with DATABASE.open("w", encoding="utf-8") as file:
+        json.dump(
+            sorted(codes),
+            file,
+            ensure_ascii=False,
+            indent=2
         )
-    """)
-
-    connection.commit()
-    connection.close()
-
-
-def is_code_known(code):
-    connection = sqlite3.connect(DATABASE)
-
-    cursor = connection.cursor()
-
-    cursor.execute(
-        "SELECT 1 FROM codes WHERE code = ?",
-        (code,)
-    )
-
-    result = cursor.fetchone()
-
-    connection.close()
-
-    return result is not None
-
-
-def save_code(code):
-    connection = sqlite3.connect(DATABASE)
-
-    cursor = connection.cursor()
-
-    cursor.execute(
-        "INSERT OR IGNORE INTO codes (code) VALUES (?)",
-        (code,)
-    )
-
-    connection.commit()
-    connection.close()
 
 
 def get_new_codes(codes):
-    new_codes = []
+    known_codes = load_codes()
 
-    for code in codes:
-        if not is_code_known(code):
-            new_codes.append(code)
+    new_codes = [
+        code for code in codes
+        if code not in known_codes
+    ]
+
+    # On conserve tous les codes connus + les nouveaux
+    all_codes = known_codes.union(codes)
+
+    save_codes(all_codes)
 
     return new_codes

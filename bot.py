@@ -9,19 +9,26 @@ TOKEN = os.environ["DISCORD_TOKEN"]
 CHANNEL_ID = int(os.environ["DISCORD_CHANNEL_ID"])
 
 
-# --------------------------------------------------
 # Liens d'activation
-# --------------------------------------------------
-
 ACTIVATION_URLS = {
     "Genshin Impact": "https://genshin.hoyoverse.com/fr/gift?code=",
     "Honkai: Star Rail": "https://hsr.hoyoverse.com/gift?code=",
 }
 
 
-# --------------------------------------------------
-# Récupération des nouveaux codes
-# --------------------------------------------------
+# Couleurs des embeds
+EMBED_COLORS = {
+    "Genshin Impact": 0x8E7CC3,
+    "Honkai: Star Rail": 0x5B9BD5,
+}
+
+
+# Emojis
+EMOJIS = {
+    "Genshin Impact": "🎮",
+    "Honkai: Star Rail": "🚂",
+}
+
 
 def get_codes_to_publish():
 
@@ -47,10 +54,6 @@ def get_codes_to_publish():
     return codes_to_publish
 
 
-# --------------------------------------------------
-# Bot Discord
-# --------------------------------------------------
-
 class GenshinBot(discord.Client):
 
     async def on_ready(self):
@@ -67,25 +70,28 @@ class GenshinBot(discord.Client):
 
                 for code in codes:
 
-                    # Emoji selon le jeu
-                    if game == "Genshin Impact":
-                        emoji = "🎮"
-                    else:
-                        emoji = "🚂"
+                    emoji = EMOJIS[game]
 
-                    # Lien d'activation
                     activation_url = (
                         ACTIVATION_URLS[game] + code
                     )
 
-                    # Message
-                    message = (
-                        f"{emoji} **Nouveau code {game} !**\n\n"
-                        f"```{code}```\n\n"
-                        "🎁 Utilise-le rapidement !"
+                    # Création de l'embed
+                    embed = discord.Embed(
+                        title=f"{emoji} Nouveau code {game} !",
+                        description=(
+                            "🎁 **Un nouveau code vient d'être découvert !**\n\n"
+                            f"**Code :**\n"
+                            f"```{code}```"
+                        ),
+                        color=EMBED_COLORS[game]
                     )
 
-                    # Bouton Discord
+                    embed.set_footer(
+                        text="Anteiku Hoyo codes • Crimson Witch"
+                    )
+
+                    # Bouton d'activation
                     view = discord.ui.View()
 
                     button = discord.ui.Button(
@@ -98,7 +104,7 @@ class GenshinBot(discord.Client):
 
                     # Envoi
                     await channel.send(
-                        message,
+                        embed=embed,
                         view=view
                     )
 
@@ -106,12 +112,8 @@ class GenshinBot(discord.Client):
                         f"Code publié ({game}) : {code}"
                     )
 
-                    print(
-                        f"Lien : {activation_url}"
-                    )
-
-                    # Seulement après l'envoi réussi,
-                    # on mémorise le code.
+                    # Le code est considéré comme connu
+                    # uniquement après l'envoi réussi.
                     mark_code_as_known(
                         game,
                         code
@@ -145,10 +147,7 @@ class GenshinBot(discord.Client):
             await self.close()
 
 
-# --------------------------------------------------
-# Recherche des codes AVANT Discord
-# --------------------------------------------------
-
+# Recherche des codes avant de démarrer Discord
 try:
 
     codes_to_publish = get_codes_to_publish()
@@ -162,25 +161,14 @@ except Exception as error:
     raise
 
 
-# --------------------------------------------------
 # Aucun nouveau code
-# --------------------------------------------------
-
 if not codes_to_publish:
 
-    print(
-        "Aucun nouveau code à publier."
-    )
-
-    print(
-        "Fin du workflow."
-    )
+    print("Aucun nouveau code à publier.")
+    print("Fin du workflow.")
 
 
-# --------------------------------------------------
-# Nouveaux codes → démarrage Discord
-# --------------------------------------------------
-
+# Nouveaux codes
 else:
 
     total = sum(

@@ -9,33 +9,32 @@ TOKEN = os.environ["DISCORD_TOKEN"]
 CHANNEL_ID = int(os.environ["DISCORD_CHANNEL_ID"])
 
 
+def get_codes_to_publish():
+    print("Recherche des codes Genshin...")
+
+    codes = scrape_genshin_codes()
+
+    print(f"Codes trouvés : {len(codes)}")
+
+    new_codes = get_new_codes(codes)
+
+    print(f"Nouveaux codes : {len(new_codes)}")
+
+    return new_codes
+
+
 class GenshinBot(discord.Client):
+
     async def on_ready(self):
         print(f"Connecté en tant que {self.user}")
 
         try:
-            # Récupération des codes depuis Crimson Witch
-            codes = scrape_genshin_codes()
-
-            print(f"Codes trouvés : {len(codes)}")
-
-            # Comparaison avec les codes déjà publiés
-            new_codes = get_new_codes(codes)
-
-            print(f"Nouveaux codes : {len(new_codes)}")
-
-            if not new_codes:
-                print("Aucun nouveau code.")
-                await self.close()
-                return
-
-            # Récupération du salon Discord
             channel = await self.fetch_channel(CHANNEL_ID)
 
             print(f"Salon trouvé : #{channel.name}")
 
-            # Publication des nouveaux codes
             for code in new_codes:
+
                 message = (
                     "🎁 **Nouveau code Genshin Impact !**\n\n"
                     f"```{code}```\n"
@@ -46,8 +45,8 @@ class GenshinBot(discord.Client):
 
                 print(f"Code publié : {code}")
 
-                # On ne considère le code comme connu
-                # qu'après son envoi réussi
+                # Le code est marqué comme connu uniquement
+                # après l'envoi réussi sur Discord.
                 mark_code_as_known(code)
 
             print("Tous les nouveaux codes ont été publiés.")
@@ -58,21 +57,42 @@ class GenshinBot(discord.Client):
         except discord.Forbidden:
             print(
                 "ERREUR : le bot n'a pas la permission "
-                "d'écrire dans ce salon."
+                "d'accéder ou d'écrire dans ce salon."
             )
 
         except discord.HTTPException as error:
             print(f"ERREUR Discord : {error}")
 
-        except Exception as error:
-            print(f"ERREUR : {error}")
-
         finally:
             await self.close()
 
 
-intents = discord.Intents.none()
+# --------------------------------------------------
+# Recherche des codes AVANT de démarrer Discord.
+# Cela évite de mélanger Playwright Sync et asyncio.
+# --------------------------------------------------
 
-client = GenshinBot(intents=intents)
+try:
+    new_codes = get_codes_to_publish()
 
-client.run(TOKEN)
+except Exception as error:
+    print(f"ERREUR pendant la recherche des codes : {error}")
+    raise
+
+
+# S'il n'y a aucun nouveau code, inutile de connecter
+# le bot à Discord.
+if not new_codes:
+
+    print("Aucun nouveau code à publier.")
+    print("Fin du workflow.")
+
+else:
+
+    print(f"{len(new_codes)} code(s) à publier.")
+
+    intents = discord.Intents.none()
+
+    client = GenshinBot(intents=intents)
+
+    client.run(TOKEN)

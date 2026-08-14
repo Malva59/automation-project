@@ -252,7 +252,7 @@ async def check_codes():
 
                     text=(
                         "Anteiku Hoyo codes • "
-                        "Crimson Witch"
+                        "Malva"
                     )
                 )
 

@@ -26,7 +26,6 @@ def is_code(text):
         "NewCodes",
         "ActiveCodes",
         "Snezhnaya",
-        "Asia",
         "Mora",
     }
 

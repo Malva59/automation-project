@@ -2,7 +2,7 @@ name: Genshin & Star Rail Code Tracker v2
 
 on:
   schedule:
-    - cron: "*/1 * * * *"
+    - cron: "*/5 * * * *"
 
   workflow_dispatch:
 

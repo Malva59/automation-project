@@ -28,18 +28,25 @@ def save_codes(codes):
         )
 
 
-def get_new_codes(codes):
+def get_new_codes(game, codes):
     known_codes = load_codes()
 
-    return [
-        code for code in codes
-        if code not in known_codes
-    ]
+    new_codes = []
+
+    for code in codes:
+        identifier = f"{game}:{code}"
+
+        if identifier not in known_codes:
+            new_codes.append(code)
+
+    return new_codes
 
 
-def mark_code_as_known(code):
+def mark_code_as_known(game, code):
     known_codes = load_codes()
 
-    if code not in known_codes:
-        known_codes.add(code)
+    identifier = f"{game}:{code}"
+
+    if identifier not in known_codes:
+        known_codes.add(identifier)
         save_codes(known_codes)

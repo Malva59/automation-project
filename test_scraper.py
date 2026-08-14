@@ -1,13 +1,10 @@
-from scraper import scrape_genshin_codes
-from database import get_new_codes
+from scraper import scrape_all_codes
 
 
-codes = scrape_genshin_codes()
+results = scrape_all_codes()
 
-new_codes = get_new_codes(codes)
+for game, codes in results.items():
+    print(f"\n{game} : {len(codes)} codes")
 
-print(f"Codes trouvés : {len(codes)}")
-print(f"Nouveaux codes : {len(new_codes)}")
-
-for code in new_codes:
-    print(f"Nouveau : {code}")
+    for code in codes:
+        print(f"  - {code}")

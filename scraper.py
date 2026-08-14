@@ -1,30 +1,25 @@
 from playwright.sync_api import sync_playwright
 import re
 
-URL = "https://www.crimsonwitch.com/codes/Genshin_Impact"
+
+GAMES = {
+    "Genshin Impact": "https://www.crimsonwitch.com/codes/Genshin_Impact",
+    "Honkai: Star Rail": "https://www.crimsonwitch.com/codes/Honkai_Star_Rail",
+}
 
 
 def is_code(text):
-    """
-    Vérifie si une ligne ressemble à un code de récompense.
-    """
-
     text = text.strip()
 
-    # Trop court / trop long
     if len(text) < 8 or len(text) > 30:
         return False
 
-    # Un code ne contient normalement pas d'espaces
     if " " in text:
         return False
 
-    # Un code doit contenir uniquement lettres et chiffres
     if not re.fullmatch(r"[A-Za-z0-9]+", text):
         return False
 
-    # Exclusions : textes connus de la page qui pourraient ressembler
-    # à des codes.
     excluded = {
         "GenshinImpact",
         "RedemptionCodes",
@@ -35,54 +30,64 @@ def is_code(text):
         "Mora",
     }
 
-    if text in excluded:
-        return False
-
-    return True
+    return text not in excluded
 
 
-def scrape_genshin_codes():
+def scrape_game_codes(page, url):
+    print(f"Ouverture : {url}")
+
+    page.goto(
+        url,
+        wait_until="networkidle",
+        timeout=60000
+    )
+
+    text = page.locator("body").inner_text()
+
+    lines = [
+        line.strip()
+        for line in text.splitlines()
+        if line.strip()
+    ]
+
+    codes = []
+
+    for line in lines:
+        if is_code(line) and line not in codes:
+            codes.append(line)
+
+    return codes
+
+
+def scrape_all_codes():
+    results = {}
+
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
-
         page = browser.new_page()
 
-        print("Ouverture de Crimson Witch...")
+        for game, url in GAMES.items():
+            try:
+                codes = scrape_game_codes(page, url)
 
-        page.goto(
-            URL,
-            wait_until="networkidle",
-            timeout=60000
-        )
+                results[game] = codes
 
-        print(f"Titre : {page.title()}")
-        print(f"URL : {page.url}")
+                print(f"{game} : {len(codes)} codes trouvés")
 
-        text = page.locator("body").inner_text()
-
-        lines = [
-            line.strip()
-            for line in text.splitlines()
-            if line.strip()
-        ]
-
-        codes = []
-
-        for line in lines:
-            if is_code(line) and line not in codes:
-                codes.append(line)
+            except Exception as error:
+                print(f"ERREUR {game} : {error}")
+                results[game] = []
 
         browser.close()
 
-        return codes
+    return results
 
 
 if __name__ == "__main__":
-    codes = scrape_genshin_codes()
+    results = scrape_all_codes()
 
-    print("\n========== CODES TROUVÉS ==========\n")
+    for game, codes in results.items():
+        print(f"\n===== {game} =====")
 
-    for code in codes:
-        print(code)
-
-    print("\n===================================\n")
+        for code in codes:
+            print(code)

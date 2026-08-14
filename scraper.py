@@ -39,6 +39,21 @@ EXCLUDED_CODES = {
 
 
 # ==================================================
+# TEXTES QUI NE SONT PAS DES RÉCOMPENSES
+# ==================================================
+
+EXCLUDED_REWARDS = {
+    "RoleplayingGames",
+    "Coming soon!",
+    "Coming soon",
+    "LIVESTREAM CODE",
+    "LIVESTREAM CODE 2",
+    "LIVESTREAM CODE 3",
+    "OMEGA",
+}
+
+
+# ==================================================
 # DÉTECTION D'UN CODE
 # ==================================================
 
@@ -65,6 +80,81 @@ def is_code(text):
         return False
 
     return True
+
+
+# ==================================================
+# DÉTECTION D'UNE VRAIE RÉCOMPENSE
+# ==================================================
+
+def is_reward(text):
+
+    text = text.strip()
+
+    if not text:
+        return False
+
+    # ----------------------------------------------
+    # TEXTES CONNUS À IGNORER
+    # ----------------------------------------------
+
+    if text in EXCLUDED_REWARDS:
+        return False
+
+    # ----------------------------------------------
+    # LIVESTREAM CODE + NUMÉRO
+    # ----------------------------------------------
+
+    if re.fullmatch(
+        r"LIVESTREAM CODE\s*\d*",
+        text,
+        re.IGNORECASE
+    ):
+        return False
+
+    # ----------------------------------------------
+    # COMING SOON
+    # ----------------------------------------------
+
+    if text.lower() in {
+        "coming soon",
+        "coming soon!",
+    }:
+        return False
+
+    # ----------------------------------------------
+    # OMEGA
+    # ----------------------------------------------
+
+    if text.upper() == "OMEGA":
+        return False
+
+    # ----------------------------------------------
+    # ROLEPLAYINGGAMES
+    # ----------------------------------------------
+
+    if text.lower() == "roleplayinggames":
+        return False
+
+    # ----------------------------------------------
+    # UNE VRAIE RÉCOMPENSE POSSÈDE
+    # UNE QUANTITÉ
+    #
+    # Exemples :
+    # Stellar Jade ×100
+    # Credit ×50000
+    # Fuel ×1
+    # Primogem ×300
+    # Mora ×50000
+    # ----------------------------------------------
+
+    if re.search(
+        r"(×|x)\s*\d+",
+        text,
+        re.IGNORECASE
+    ):
+        return True
+
+    return False
 
 
 # ==================================================
@@ -197,12 +287,36 @@ def scrape_game_codes(page, url):
 
 
         # ----------------------------------------------
-        # RÉCOMPENSE
+        # EXPIRATION
+        #
+        # On la conserve car ton bot Discord
+        # peut l'utiliser pour afficher :
+        #
+        # Expires in 1d 4h
+        # ----------------------------------------------
+
+        if line.lower().startswith("expires"):
+            current_rewards.append(line)
+            continue
+
+
+        # ----------------------------------------------
+        # VRAIE RÉCOMPENSE
         # ----------------------------------------------
 
         if current_code is not None:
 
-            current_rewards.append(line)
+            if is_reward(line):
+
+                current_rewards.append(line)
+
+            else:
+
+                # Affichage utile pour vérifier
+                # ce que le scraper ignore
+                print(
+                    f"Récompense ignorée : {line}"
+                )
 
 
     # ==================================================
@@ -236,7 +350,7 @@ def scrape_game_codes(page, url):
 
 
 # ==================================================
-# SCRAPER GENSIHN + STAR RAIL
+# SCRAPER GENSHIN + STAR RAIL
 # ==================================================
 
 def scrape_all_codes():

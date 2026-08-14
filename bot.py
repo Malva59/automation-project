@@ -1,19 +1,42 @@
 import os
+import asyncio
 import discord
 
 from scraper import scrape_all_codes
 from database import get_new_codes, mark_code_as_known
 
 
-TOKEN = os.environ["DISCORD_TOKEN"]
-CHANNEL_ID = int(os.environ["DISCORD_CHANNEL_ID"])
+# ==================================================
+# CONFIGURATION
+# ==================================================
 
+TOKEN = (
+    os.getenv("DISCORD_TOKEN")
+    or os.getenv("TOKEN")
+    or os.getenv("BOT_TOKEN")
+)
+
+CHANNEL_ID = 1494316922534367352
+
+ROLE_ID = 1537714122756464712
+
+
+# ==================================================
+# LIENS D'ACTIVATION
+# ==================================================
 
 ACTIVATION_URLS = {
-    "Genshin Impact": "https://genshin.hoyoverse.com/fr/gift?code=",
-    "Honkai: Star Rail": "https://hsr.hoyoverse.com/gift?code=",
+    "Genshin Impact":
+        "https://genshin.hoyoverse.com/fr/gift?code=",
+
+    "Honkai: Star Rail":
+        "https://hsr.hoyoverse.com/gift?code=",
 }
 
+
+# ==================================================
+# COULEURS DES EMBEDS
+# ==================================================
 
 EMBED_COLORS = {
     "Genshin Impact": 0x8E7CC3,
@@ -21,238 +44,311 @@ EMBED_COLORS = {
 }
 
 
+# ==================================================
+# EMOJIS
+# ==================================================
+
 EMOJIS = {
     "Genshin Impact": "🎮",
     "Honkai: Star Rail": "🚂",
 }
 
 
-def get_codes_to_publish():
+# ==================================================
+# VÉRIFICATION DES CODES
+# ==================================================
 
+async def check_codes():
+
+    print("========================================")
     print("Recherche des codes...")
+    print("========================================")
 
-    all_codes = scrape_all_codes()
+    try:
 
-    codes_to_publish = {}
+        # Le scraper utilise Playwright.
+        # On le lance dans un thread pour ne pas
+        # bloquer la boucle Discord.
 
-    for game, codes in all_codes.items():
-
-        print(
-            f"{game} : {len(codes)} codes trouvés"
+        all_codes = await asyncio.to_thread(
+            scrape_all_codes
         )
 
-        new_codes = get_new_codes(
-            game,
-            codes
-        )
+        codes_to_publish = {}
 
-        print(
-            f"{game} : {len(new_codes)} nouveaux codes"
-        )
+        # ----------------------------------------------
+        # Recherche des nouveaux codes
+        # ----------------------------------------------
 
-        if new_codes:
-            codes_to_publish[game] = new_codes
+        for game, codes in all_codes.items():
 
-    return codes_to_publish
+            print(
+                f"{game} : "
+                f"{len(codes)} codes trouvés"
+            )
 
-
-class GenshinBot(discord.Client):
-
-    async def on_ready(self):
-
-        print(
-            f"Connecté en tant que {self.user}"
-        )
-
-        try:
-
-            channel = await self.fetch_channel(
-                CHANNEL_ID
+            new_codes = get_new_codes(
+                game,
+                codes
             )
 
             print(
-                f"Salon trouvé : #{channel.name}"
+                f"{game} : "
+                f"{len(new_codes)} nouveaux codes"
             )
 
-            for game, codes in codes_to_publish.items():
+            if new_codes:
+                codes_to_publish[game] = new_codes
 
-                for item in codes:
+        # ----------------------------------------------
+        # Aucun nouveau code
+        # ----------------------------------------------
 
-                    code = item["code"]
-                    rewards = item["rewards"]
+        if not codes_to_publish:
 
-                    emoji = EMOJIS[game]
+            print("Aucun nouveau code.")
 
-                    activation_url = (
-                        ACTIVATION_URLS[game]
-                        + code
+            return
+
+        total = sum(
+            len(codes)
+            for codes in codes_to_publish.values()
+        )
+
+        print(
+            f"{total} nouveau(x) code(s) à publier."
+        )
+
+        # ----------------------------------------------
+        # Récupération du salon Discord
+        # ----------------------------------------------
+
+        channel = await client.fetch_channel(
+            CHANNEL_ID
+        )
+
+        print(
+            f"Salon trouvé : #{channel.name}"
+        )
+
+        # ----------------------------------------------
+        # Publication
+        # ----------------------------------------------
+
+        for game, codes in codes_to_publish.items():
+
+            for item in codes:
+
+                code = item["code"]
+
+                rewards = item.get(
+                    "rewards",
+                    []
+                )
+
+                emoji = EMOJIS.get(
+                    game,
+                    "🎁"
+                )
+
+                activation_url = (
+                    ACTIVATION_URLS[game]
+                    + code
+                )
+
+                # ======================================
+                # EMBED
+                # ======================================
+
+                embed = discord.Embed(
+                    title=(
+                        f"{emoji} "
+                        f"Nouveau code {game} !"
+                    ),
+                    description=(
+                        "🎁 **Un nouveau code "
+                        "vient d'être découvert !**"
+                    ),
+                    color=EMBED_COLORS.get(
+                        game,
+                        0x5865F2
+                    )
+                )
+
+                # --------------------------------------
+                # CODE
+                # --------------------------------------
+
+                embed.add_field(
+                    name="🎟️ Code",
+                    value=f"```{code}```",
+                    inline=False
+                )
+
+                # --------------------------------------
+                # RÉCOMPENSES
+                # --------------------------------------
+
+                if rewards:
+
+                    rewards_text = "\n".join(
+                        f"• {reward}"
+                        for reward in rewards
                     )
 
-                    # -------------------------
-                    # Création de l'embed
-                    # -------------------------
+                    if len(rewards_text) > 1024:
+                        rewards_text = (
+                            rewards_text[:1021]
+                            + "..."
+                        )
 
-                    embed = discord.Embed(
-                        title=(
-                            f"{emoji} "
-                            f"Nouveau code {game} !"
-                        ),
-                        description=(
-                            "🎁 **Un nouveau code "
-                            "vient d'être découvert !**"
-                        ),
-                        color=EMBED_COLORS[game]
-                    )
-
-                    # Code
                     embed.add_field(
-                        name="🎟️ Code",
-                        value=f"```{code}```",
+                        name="🎁 Récompenses",
+                        value=rewards_text,
                         inline=False
                     )
 
-                    # Récompenses
-                    if rewards:
+                else:
 
-                        rewards_text = "\n".join(
-                            f"• {reward}"
-                            for reward in rewards
-                        )
-
-                        embed.add_field(
-                            name="🎁 Récompenses",
-                            value=rewards_text[:1024],
-                            inline=False
-                        )
-
-                    else:
-
-                        embed.add_field(
-                            name="🎁 Récompenses",
-                            value="Non précisées",
-                            inline=False
-                        )
-
-                    embed.set_footer(
-                        text=(
-                            "Anteiku Hoyo codes • "
-                            "Crimson Witch"
-                        )
+                    embed.add_field(
+                        name="🎁 Récompenses",
+                        value="Non précisées",
+                        inline=False
                     )
 
-                    # -------------------------
-                    # Bouton d'activation
-                    # -------------------------
+                # --------------------------------------
+                # FOOTER
+                # --------------------------------------
 
-                    view = discord.ui.View()
-
-                    button = discord.ui.Button(
-                        label="🎁 Utiliser le code",
-                        style=discord.ButtonStyle.link,
-                        url=activation_url
+                embed.set_footer(
+                    text=(
+                        "Anteiku Hoyo codes • "
+                        "Crimson Witch"
                     )
+                )
 
-                    view.add_item(button)
+                # ======================================
+                # BOUTON D'ACTIVATION
+                # ======================================
 
-                    # -------------------------
-                    # Envoi Discord
-                    # -------------------------
+                view = discord.ui.View(
+                    timeout=None
+                )
 
-                    await channel.send(
-                        embed=embed,
-                        view=view
-                    )
+                button = discord.ui.Button(
+                    label="🎁 Utiliser le code",
+                    style=discord.ButtonStyle.link,
+                    url=activation_url
+                )
 
-                    print(
-                        f"Code publié ({game}) : {code}"
-                    )
+                view.add_item(button)
 
-                    # On mémorise uniquement
-                    # après l'envoi réussi.
-                    mark_code_as_known(
-                        game,
-                        code
-                    )
+                # ======================================
+                # PING DU RÔLE
+                # ======================================
 
-            print(
-                "Tous les nouveaux codes ont été traités."
-            )
+                role_mention = f"<@&{ROLE_ID}>"
 
-        except discord.NotFound:
+                allowed_mentions = discord.AllowedMentions(
+                    roles=True
+                )
 
-            print(
-                "ERREUR : salon Discord introuvable."
-            )
+                # ======================================
+                # ENVOI SUR DISCORD
+                # ======================================
 
-        except discord.Forbidden:
+                await channel.send(
+                    content=role_mention,
+                    embed=embed,
+                    view=view,
+                    allowed_mentions=allowed_mentions
+                )
 
-            print(
-                "ERREUR : le bot n'a pas la permission "
-                "d'accéder ou d'écrire dans ce salon."
-            )
+                print(
+                    f"Code publié "
+                    f"({game}) : {code}"
+                )
 
-        except discord.HTTPException as error:
+                print(
+                    f"Rôle pingé : {ROLE_ID}"
+                )
 
-            print(
-                f"ERREUR Discord : {error}"
-            )
+                # ======================================
+                # MÉMORISATION
+                # ======================================
 
-        finally:
+                mark_code_as_known(
+                    game,
+                    code
+                )
 
-            await self.close()
+        print(
+            "Tous les nouveaux codes ont été traités."
+        )
 
+    except Exception as error:
 
-# ==================================================
-# Recherche des codes AVANT de démarrer Discord
-# ==================================================
-
-try:
-
-    codes_to_publish = get_codes_to_publish()
-
-except Exception as error:
-
-    print(
-        f"ERREUR pendant la recherche des codes : {error}"
-    )
-
-    raise
-
-
-# ==================================================
-# Aucun nouveau code
-# ==================================================
-
-if not codes_to_publish:
-
-    print(
-        "Aucun nouveau code à publier."
-    )
-
-    print(
-        "Fin du workflow."
-    )
+        print(
+            f"ERREUR pendant la vérification : "
+            f"{error}"
+        )
 
 
 # ==================================================
-# Nouveaux codes
+# BOT DISCORD
 # ==================================================
 
-else:
+class HoyoBot(discord.Client):
 
-    total = sum(
-        len(codes)
-        for codes in codes_to_publish.values()
+    async def setup_hook(self):
+
+        # Le workflow GitHub se termine après
+        # la publication des codes.
+        pass
+
+    async def on_ready(self):
+
+        print("========================================")
+        print(
+            f"Connecté en tant que {self.user}"
+        )
+        print("Recherche des codes terminée.")
+        print("========================================")
+
+        # Effectue une vérification unique.
+        await check_codes()
+
+
+# ==================================================
+# VÉRIFICATION DU TOKEN
+# ==================================================
+
+if not TOKEN:
+
+    raise RuntimeError(
+        "TOKEN Discord introuvable. "
+        "Vérifie le secret Discord dans GitHub."
     )
 
-    print(
-        f"{total} code(s) à publier."
-    )
 
-    intents = discord.Intents.none()
+# ==================================================
+# INTENTS
+# ==================================================
 
-    client = GenshinBot(
-        intents=intents
-    )
+intents = discord.Intents.none()
 
-    client.run(TOKEN)
+
+# ==================================================
+# CRÉATION DU CLIENT
+# ==================================================
+
+client = HoyoBot(
+    intents=intents
+)
+
+
+# ==================================================
+# DÉMARRAGE
+# ==================================================
+
+client.run(TOKEN)

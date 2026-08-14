@@ -3,6 +3,9 @@ name: Test Crimson Witch
 on:
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -24,3 +27,17 @@ jobs:
 
       - name: Tester Crimson Witch
         run: python test_scraper.py
+
+      - name: Sauvegarder les codes connus
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add known_codes.json
+
+          if git diff --cached --quiet; then
+            echo "Aucun nouveau code à sauvegarder."
+          else
+            git commit -m "Update known Genshin codes"
+            git push
+          fi

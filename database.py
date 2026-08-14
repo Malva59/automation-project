@@ -31,14 +31,15 @@ def save_codes(codes):
 def get_new_codes(codes):
     known_codes = load_codes()
 
-    new_codes = [
+    return [
         code for code in codes
         if code not in known_codes
     ]
 
-    # On conserve tous les codes connus + les nouveaux
-    all_codes = known_codes.union(codes)
 
-    save_codes(all_codes)
+def mark_code_as_known(code):
+    known_codes = load_codes()
 
-    return new_codes
+    if code not in known_codes:
+        known_codes.add(code)
+        save_codes(known_codes)

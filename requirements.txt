@@ -2,3 +2,4 @@ discord-webhook
 playwright
 beautifulsoup4
 requests
+discord.py

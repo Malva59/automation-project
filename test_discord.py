@@ -9,17 +9,26 @@ class TestBot(discord.Client):
     async def on_ready(self):
         print(f"Connecté en tant que {self.user}")
 
-        channel = self.get_channel(CHANNEL_ID)
+        try:
+            channel = await self.fetch_channel(CHANNEL_ID)
 
-        if channel is None:
-            print("ERREUR : salon introuvable.")
+            print(f"Salon trouvé : #{channel.name}")
+            print(f"Serveur : {channel.guild.name}")
+
+            await channel.send("🤖 Connexion du bot réussie !")
+            print("Message envoyé avec succès.")
+
+        except discord.NotFound:
+            print("ERREUR : salon introuvable ou inaccessible.")
+
+        except discord.Forbidden:
+            print("ERREUR : le bot n'a pas la permission d'accéder ou d'écrire dans ce salon.")
+
+        except discord.HTTPException as error:
+            print(f"ERREUR Discord : {error}")
+
+        finally:
             await self.close()
-            return
-
-        await channel.send("🤖 Connexion du bot réussie !")
-        print("Message envoyé avec succès.")
-
-        await self.close()
 
 
 intents = discord.Intents.none()

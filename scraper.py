@@ -3,10 +3,17 @@ import re
 
 
 GAMES = {
-    "Genshin Impact": "https://www.crimsonwitch.com/codes/Genshin_Impact",
-    "Honkai: Star Rail": "https://www.crimsonwitch.com/codes/Honkai_Star_Rail",
+    "Genshin Impact":
+        "https://www.crimsonwitch.com/codes/Genshin_Impact",
+
+    "Honkai: Star Rail":
+        "https://www.crimsonwitch.com/codes/Honkai_Star_Rail",
 }
 
+
+# ==================================================
+# LIGNES À IGNORER
+# ==================================================
 
 STOP_LINES = {
     "New Codes",
@@ -16,8 +23,31 @@ STOP_LINES = {
 }
 
 
+# ==================================================
+# TEXTES QUI NE SONT PAS DES CODES
+# ==================================================
+
+EXCLUDED_CODES = {
+    "GenshinImpact",
+    "RedemptionCodes",
+    "NewCodes",
+    "ActiveCodes",
+    "Snezhnaya",
+    "Mora",
+    "Primogem",
+}
+
+
+# ==================================================
+# DÉTECTION D'UN CODE
+# ==================================================
+
 def is_code(text):
+
     text = text.strip()
+
+    if not text:
+        return False
 
     if len(text) < 8 or len(text) > 30:
         return False
@@ -25,23 +55,24 @@ def is_code(text):
     if " " in text:
         return False
 
-    if not re.fullmatch(r"[A-Za-z0-9]+", text):
+    if not re.fullmatch(
+        r"[A-Za-z0-9]+",
+        text
+    ):
         return False
 
-    excluded = {
-        "GenshinImpact",
-        "RedemptionCodes",
-        "NewCodes",
-        "ActiveCodes",
-        "Snezhnaya",
-        "Mora",
-        "Primogem",
-    }
+    if text in EXCLUDED_CODES:
+        return False
 
-    return text not in excluded
+    return True
 
+
+# ==================================================
+# SCRAPER D'UN JEU
+# ==================================================
 
 def scrape_game_codes(page, url):
+
     print(f"Ouverture : {url}")
 
     page.goto(
@@ -50,7 +81,9 @@ def scrape_game_codes(page, url):
         timeout=60000
     )
 
-    text = page.locator("body").inner_text()
+    text = page.locator(
+        "body"
+    ).inner_text()
 
     lines = [
         line.strip()
@@ -63,53 +96,126 @@ def scrape_game_codes(page, url):
     current_code = None
     current_rewards = []
 
+    # Indique si le code actuel est réservé à l'Asie
+    current_is_asia_only = False
+
+
+    # ==================================================
+    # SAUVEGARDE DU CODE ACTUEL
+    # ==================================================
+
     def save_current():
-        if current_code is not None:
-            results.append({
-                "code": current_code,
-                "rewards": current_rewards.copy()
-            })
+
+        nonlocal current_code
+        nonlocal current_rewards
+        nonlocal current_is_asia_only
+
+        if current_code is None:
+            return
+
+        # ----------------------------------------------
+        # CODE ASIA UNIQUEMENT
+        # ----------------------------------------------
+
+        if current_is_asia_only:
+
+            print(
+                f"Code ignoré "
+                f"(Asia server only) : "
+                f"{current_code}"
+            )
+
+            return
+
+        # ----------------------------------------------
+        # CODE NORMAL
+        # ----------------------------------------------
+
+        results.append({
+            "code": current_code,
+            "rewards": current_rewards.copy()
+        })
+
+
+    # ==================================================
+    # PARCOURS DE LA PAGE
+    # ==================================================
 
     for line in lines:
 
-        # Nouveau code détecté
+        # ----------------------------------------------
+        # NOUVEAU CODE
+        # ----------------------------------------------
+
         if is_code(line):
 
-            # Sauvegarde du code précédent
+            # Sauvegarde le précédent
             save_current()
 
+            # Commence un nouveau code
             current_code = line
             current_rewards = []
+            current_is_asia_only = False
 
             continue
 
-        # Ignore certains éléments inutiles
+
+        # ----------------------------------------------
+        # ASIA SERVER ONLY
+        # ----------------------------------------------
+
+        if line.lower() == "asia server only":
+
+            current_is_asia_only = True
+
+            continue
+
+
+        # ----------------------------------------------
+        # LIGNES À IGNORER
+        # ----------------------------------------------
+
         if line in STOP_LINES:
             continue
 
-        # Si on est actuellement dans un code,
-        # on considère les lignes suivantes comme récompenses.
-        if current_code is not None:
 
-            # On ignore certains textes de navigation
-            if line in {
-                "Genshin Impact",
-                "Honkai: Star Rail",
-                "Code Tracker",
-                "Support us",
-                "Builds",
-                "Contact Us",
-                "Legal",
-                "Sidebar Control",
-            }:
-                continue
+        # ----------------------------------------------
+        # NAVIGATION DU SITE
+        # ----------------------------------------------
+
+        if line in {
+            "Genshin Impact",
+            "Honkai: Star Rail",
+            "Code Tracker",
+            "Support us",
+            "Builds",
+            "Contact Us",
+            "Legal",
+            "Sidebar Control",
+        }:
+            continue
+
+
+        # ----------------------------------------------
+        # RÉCOMPENSE
+        # ----------------------------------------------
+
+        if current_code is not None:
 
             current_rewards.append(line)
 
-    # Sauvegarde du dernier code
+
+    # ==================================================
+    # DERNIER CODE
+    # ==================================================
+
     save_current()
 
-    # Suppression des doublons
+
+    # ==================================================
+    # SUPPRESSION DES DOUBLONS
+    # ==================================================
+
     cleaned_results = []
 
     seen = set()
@@ -125,8 +231,13 @@ def scrape_game_codes(page, url):
 
         cleaned_results.append(item)
 
+
     return cleaned_results
 
+
+# ==================================================
+# SCRAPER GENSIHN + STAR RAIL
+# ==================================================
 
 def scrape_all_codes():
 
@@ -139,6 +250,7 @@ def scrape_all_codes():
         )
 
         page = browser.new_page()
+
 
         for game, url in GAMES.items():
 
@@ -159,15 +271,22 @@ def scrape_all_codes():
             except Exception as error:
 
                 print(
-                    f"ERREUR {game} : {error}"
+                    f"ERREUR {game} : "
+                    f"{error}"
                 )
 
                 results[game] = []
 
+
         browser.close()
+
 
     return results
 
+
+# ==================================================
+# TEST LOCAL
+# ==================================================
 
 if __name__ == "__main__":
 

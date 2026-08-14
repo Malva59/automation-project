@@ -12,18 +12,6 @@ GAMES = {
 
 
 # ==================================================
-# LIGNES À IGNORER
-# ==================================================
-
-STOP_LINES = {
-    "New Codes",
-    "Active Codes",
-    "Asia server only",
-    "NEW",
-}
-
-
-# ==================================================
 # TEXTES QUI NE SONT PAS DES CODES
 # ==================================================
 
@@ -35,20 +23,6 @@ EXCLUDED_CODES = {
     "Snezhnaya",
     "Mora",
     "Primogem",
-}
-
-
-# ==================================================
-# TEXTES QUI NE SONT PAS DES RÉCOMPENSES
-# ==================================================
-
-EXCLUDED_REWARDS = {
-    "RoleplayingGames",
-    "Coming soon!",
-    "Coming soon",
-    "LIVESTREAM CODE",
-    "LIVESTREAM CODE 2",
-    "LIVESTREAM CODE 3",
     "OMEGA",
 }
 
@@ -83,25 +57,28 @@ def is_code(text):
 
 
 # ==================================================
-# DÉTECTION D'UNE VRAIE RÉCOMPENSE
+# NETTOYAGE D'UNE RÉCOMPENSE
 # ==================================================
 
-def is_reward(text):
+def clean_reward(text):
 
     text = text.strip()
 
     if not text:
-        return False
+        return None
 
     # ----------------------------------------------
-    # TEXTES CONNUS À IGNORER
+    # Coming soon
     # ----------------------------------------------
 
-    if text in EXCLUDED_REWARDS:
-        return False
+    if text.lower() in {
+        "coming soon",
+        "coming soon!",
+    }:
+        return None
 
     # ----------------------------------------------
-    # LIVESTREAM CODE + NUMÉRO
+    # LIVESTREAM CODE
     # ----------------------------------------------
 
     if re.fullmatch(
@@ -109,52 +86,155 @@ def is_reward(text):
         text,
         re.IGNORECASE
     ):
-        return False
+        return None
 
     # ----------------------------------------------
-    # COMING SOON
+    # Roleplaying Games
     # ----------------------------------------------
 
-    if text.lower() in {
-        "coming soon",
-        "coming soon!",
-    }:
-        return False
+    if "roleplaying" in text.lower():
+        return None
 
     # ----------------------------------------------
-    # OMEGA
-    # ----------------------------------------------
-
-    if text.upper() == "OMEGA":
-        return False
-
-    # ----------------------------------------------
-    # ROLEPLAYINGGAMES
-    # ----------------------------------------------
-
-    if text.lower() == "roleplayinggames":
-        return False
-
-    # ----------------------------------------------
-    # UNE VRAIE RÉCOMPENSE POSSÈDE
-    # UNE QUANTITÉ
+    # On garde uniquement le nom de la récompense
+    # jusqu'à sa quantité.
     #
-    # Exemples :
-    # Stellar Jade ×100
-    # Credit ×50000
-    # Fuel ×1
-    # Primogem ×300
-    # Mora ×50000
+    # Exemple :
+    #
+    # Traveler's Guide ×5 Primary & Secondary
+    # Schooling (K-12)
+    #
+    # devient :
+    #
+    # Traveler's Guide ×5
     # ----------------------------------------------
 
-    if re.search(
-        r"(×|x)\s*\d+",
+    match = re.search(
+        r"^(.+?(?:×|x)\s*\d+)",
         text,
         re.IGNORECASE
-    ):
-        return True
+    )
 
-    return False
+    if match:
+        return match.group(1).strip()
+
+    return None
+
+
+# ==================================================
+# EXTRACTION D'UNE CARTE
+# ==================================================
+
+def extract_code_card(card):
+
+    # ----------------------------------------------
+    # CODE
+    # ----------------------------------------------
+
+    code_locator = card.locator(
+        ".code-header .code"
+    )
+
+    if code_locator.count() == 0:
+        return None
+
+    code = code_locator.first.inner_text().strip()
+
+    if not is_code(code):
+        return None
+
+
+    # ----------------------------------------------
+    # ASIA SERVER ONLY
+    # ----------------------------------------------
+
+    card_text = card.inner_text()
+
+    if "Asia server only" in card_text:
+        print(
+            f"Code ignoré (Asia server only) : {code}"
+        )
+
+        return None
+
+
+    # ----------------------------------------------
+    # EXPIRATION
+    # ----------------------------------------------
+
+    rewards = []
+
+    time_locator = card.locator(
+        ".code-header .time-left"
+    )
+
+    if time_locator.count() > 0:
+
+        expiration = time_locator.first.inner_text().strip()
+
+        if expiration:
+            rewards.append(expiration)
+
+
+    # ----------------------------------------------
+    # RÉCOMPENSES
+    # ----------------------------------------------
+
+    reward_items = card.locator(
+        "ul.rewards li.reward"
+    )
+
+    for i in range(reward_items.count()):
+
+        reward_item = reward_items.nth(i)
+
+        # ------------------------------------------
+        # On cherche d'abord un <p>
+        #
+        # C'est important car le <li> peut contenir
+        # d'autres informations comme :
+        # Roleplaying Games
+        # ------------------------------------------
+
+        paragraph = reward_item.locator("p")
+
+        if paragraph.count() > 0:
+
+            reward_text = paragraph.first.inner_text().strip()
+
+        else:
+
+            reward_text = reward_item.inner_text().strip()
+
+
+        # ------------------------------------------
+        # Nettoyage
+        # ------------------------------------------
+
+        reward = clean_reward(reward_text)
+
+        if not reward:
+            continue
+
+
+        # ------------------------------------------
+        # Évite les doublons
+        # ------------------------------------------
+
+        if reward in rewards:
+            continue
+
+        rewards.append(reward)
+
+
+    # ----------------------------------------------
+    # RÉSULTAT
+    # ----------------------------------------------
+
+    return {
+        "code": code,
+        "rewards": rewards
+    }
 
 
 # ==================================================
@@ -163,7 +243,15 @@ def is_reward(text):
 
 def scrape_game_codes(page, url):
 
+    print()
+    print("=" * 60)
     print(f"Ouverture : {url}")
+    print("=" * 60)
+
+
+    # ----------------------------------------------
+    # OUVERTURE
+    # ----------------------------------------------
 
     page.goto(
         url,
@@ -171,182 +259,97 @@ def scrape_game_codes(page, url):
         timeout=60000
     )
 
-    text = page.locator(
-        "body"
-    ).inner_text()
+    page.wait_for_timeout(2000)
 
-    lines = [
-        line.strip()
-        for line in text.splitlines()
-        if line.strip()
-    ]
+
+    # ----------------------------------------------
+    # RÉCUPÉRATION DES CARTES
+    # ----------------------------------------------
+
+    cards = page.locator(
+        "#codes .codes-wrapper .code-card"
+    )
+
+    card_count = cards.count()
+
+    print(
+        f"Cartes trouvées : {card_count}"
+    )
+
 
     results = []
 
-    current_code = None
-    current_rewards = []
-
-    # Indique si le code actuel est réservé à l'Asie
-    current_is_asia_only = False
-
-
-    # ==================================================
-    # SAUVEGARDE DU CODE ACTUEL
-    # ==================================================
-
-    def save_current():
-
-        nonlocal current_code
-        nonlocal current_rewards
-        nonlocal current_is_asia_only
-
-        if current_code is None:
-            return
-
-        # ----------------------------------------------
-        # CODE ASIA UNIQUEMENT
-        # ----------------------------------------------
-
-        if current_is_asia_only:
-
-            print(
-                f"Code ignoré "
-                f"(Asia server only) : "
-                f"{current_code}"
-            )
-
-            return
-
-        # ----------------------------------------------
-        # CODE NORMAL
-        # ----------------------------------------------
-
-        results.append({
-            "code": current_code,
-            "rewards": current_rewards.copy()
-        })
-
-
-    # ==================================================
-    # PARCOURS DE LA PAGE
-    # ==================================================
-
-    for line in lines:
-
-        # ----------------------------------------------
-        # NOUVEAU CODE
-        # ----------------------------------------------
-
-        if is_code(line):
-
-            # Sauvegarde le précédent
-            save_current()
-
-            # Commence un nouveau code
-            current_code = line
-            current_rewards = []
-            current_is_asia_only = False
-
-            continue
-
-
-        # ----------------------------------------------
-        # ASIA SERVER ONLY
-        # ----------------------------------------------
-
-        if line.lower() == "asia server only":
-
-            current_is_asia_only = True
-
-            continue
-
-
-        # ----------------------------------------------
-        # LIGNES À IGNORER
-        # ----------------------------------------------
-
-        if line in STOP_LINES:
-            continue
-
-
-        # ----------------------------------------------
-        # NAVIGATION DU SITE
-        # ----------------------------------------------
-
-        if line in {
-            "Genshin Impact",
-            "Honkai: Star Rail",
-            "Code Tracker",
-            "Support us",
-            "Builds",
-            "Contact Us",
-            "Legal",
-            "Sidebar Control",
-        }:
-            continue
-
-
-        # ----------------------------------------------
-        # EXPIRATION
-        #
-        # On la conserve car ton bot Discord
-        # peut l'utiliser pour afficher :
-        #
-        # Expires in 1d 4h
-        # ----------------------------------------------
-
-        if line.lower().startswith("expires"):
-            current_rewards.append(line)
-            continue
-
-
-        # ----------------------------------------------
-        # VRAIE RÉCOMPENSE
-        # ----------------------------------------------
-
-        if current_code is not None:
-
-            if is_reward(line):
-
-                current_rewards.append(line)
-
-            else:
-
-                # Affichage utile pour vérifier
-                # ce que le scraper ignore
-                print(
-                    f"Récompense ignorée : {line}"
-                )
-
-
-    # ==================================================
-    # DERNIER CODE
-    # ==================================================
-
-    save_current()
-
-
-    # ==================================================
-    # SUPPRESSION DES DOUBLONS
-    # ==================================================
-
-    cleaned_results = []
-
     seen = set()
 
-    for item in results:
+
+    # ----------------------------------------------
+    # PARCOURS DES CARTES
+    # ----------------------------------------------
+
+    for i in range(card_count):
+
+        card = cards.nth(i)
+
+        try:
+
+            item = extract_code_card(card)
+
+        except Exception as error:
+
+            print(
+                f"Erreur carte {i} : {error}"
+            )
+
+            continue
+
+
+        if item is None:
+            continue
+
 
         code = item["code"]
+
+
+        # ------------------------------------------
+        # DOUBLON
+        # ------------------------------------------
 
         if code in seen:
             continue
 
         seen.add(code)
 
-        cleaned_results.append(item)
+
+        # ------------------------------------------
+        # AJOUT
+        # ------------------------------------------
+
+        results.append(item)
 
 
-    return cleaned_results
+        # ------------------------------------------
+        # LOG
+        # ------------------------------------------
+
+        print()
+        print(f"CODE : {code}")
+
+        print("RÉCOMPENSES :")
+
+        for reward in item["rewards"]:
+
+            print(
+                f"  - {reward}"
+            )
+
+
+    print()
+    print(
+        f"{len(results)} codes récupérés"
+    )
+
+
+    return results
 
 
 # ==================================================
@@ -356,6 +359,7 @@ def scrape_game_codes(page, url):
 def scrape_all_codes():
 
     results = {}
+
 
     with sync_playwright() as p:
 
@@ -377,13 +381,17 @@ def scrape_all_codes():
 
                 results[game] = codes
 
+
+                print()
                 print(
                     f"{game} : "
                     f"{len(codes)} codes trouvés"
                 )
 
+
             except Exception as error:
 
+                print()
                 print(
                     f"ERREUR {game} : "
                     f"{error}"
@@ -406,26 +414,35 @@ if __name__ == "__main__":
 
     results = scrape_all_codes()
 
+
+    print()
+    print("=" * 60)
+    print("RÉSULTAT FINAL")
+    print("=" * 60)
+
+
     for game, codes in results.items():
 
+        print()
         print(
-            f"\n===== {game} ====="
+            f"===== {game} ====="
         )
+
 
         for item in codes:
 
+            print()
             print(
                 f"CODE : {item['code']}"
             )
 
             print(
-                "RECOMPENSES :"
+                "RÉCOMPENSES :"
             )
+
 
             for reward in item["rewards"]:
 
                 print(
                     f"  - {reward}"
                 )
-
-            print()

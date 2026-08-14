@@ -33,11 +33,12 @@ def get_new_codes(game, codes):
 
     new_codes = []
 
-    for code in codes:
+    for item in codes:
+        code = item["code"]
         identifier = f"{game}:{code}"
 
         if identifier not in known_codes:
-            new_codes.append(code)
+            new_codes.append(item)
 
     return new_codes
 

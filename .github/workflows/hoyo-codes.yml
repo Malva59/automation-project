@@ -39,21 +39,29 @@ jobs:
 
 
       # ==========================================
+      # CALCULER LE PROCHAIN LANCEMENT
+      # ==========================================
+
+      - name: Calculer le prochain lancement
+        run: |
+
+          STARTED_AT=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+          NEXT_SEARCH_AT=$(date -u -d "+5 minutes" +"%Y-%m-%dT%H:%M:%SZ")
+
+          echo "STARTED_AT=$STARTED_AT" >> "$GITHUB_ENV"
+          echo "NEXT_SEARCH_AT=$NEXT_SEARCH_AT" >> "$GITHUB_ENV"
+
+          echo "Recherche commencée : $STARTED_AT"
+          echo "Prochaine recherche prévue : $NEXT_SEARCH_AT"
+
+
+      # ==========================================
       # STATUT : RECHERCHE EN COURS
       # ==========================================
 
       - name: Statut - Recherche en cours
         run: |
-
-          STARTED_AT=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-
-          # Prochaine recherche = 5 minutes après
-          # le début de cette recherche
-          NEXT_SEARCH_AT=$(date -u -d "+5 minutes" +"%Y-%m-%dT%H:%M:%SZ")
-
-          # Rend la variable disponible pour
-          # les étapes suivantes
-          echo "NEXT_SEARCH_AT=$NEXT_SEARCH_AT" >> "$GITHUB_ENV"
 
           cat > status.json << EOF
           {
@@ -119,6 +127,26 @@ jobs:
 
 
       # ==========================================
+      # GARANTIR 30 SECONDES DE STATUT RECHERCHE
+      # ==========================================
+
+      - name: Maintenir le statut recherche
+        if: always()
+        run: |
+
+          NOW=$(date +%s)
+          START=$(date -d "$STARTED_AT" +%s)
+
+          ELAPSED=$((NOW - START))
+
+          if [ "$ELAPSED" -lt 30 ]; then
+            WAIT=$((30 - ELAPSED))
+            echo "Maintien du statut recherche pendant $WAIT secondes..."
+            sleep "$WAIT"
+          fi
+
+
+      # ==========================================
       # STATUT : RECHERCHE TERMINÉE
       # ==========================================
 
@@ -128,16 +156,10 @@ jobs:
 
           COMPLETED_AT=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
-          # IMPORTANT :
-          # On conserve NEXT_SEARCH_AT calculé
-          # au début du workflow.
-          #
-          # On ne rajoute PAS 5 minutes à
-          # l'heure de fin.
-
           cat > status.json << EOF
           {
             "status": "waiting",
+            "started_at": "$STARTED_AT",
             "completed_at": "$COMPLETED_AT",
             "next_search_at": "$NEXT_SEARCH_AT"
           }
@@ -153,20 +175,13 @@ jobs:
 
 
       # ==========================================
-      # POST INSTALLER PYTHON
+      # FIN
       # ==========================================
 
-      - name: Post Installer Python
+      - name: Terminé
         if: always()
         run: |
-          echo "Python terminé"
-
-
-      # ==========================================
-      # POST RÉCUPÉRER LE CODE
-      # ==========================================
-
-      - name: Post Récupérer le code
-        if: always()
-        run: |
-          echo "Récupération terminée"
+          echo "========================================"
+          echo "Recherche terminée."
+          echo "Prochaine recherche : $NEXT_SEARCH_AT"
+          echo "========================================"

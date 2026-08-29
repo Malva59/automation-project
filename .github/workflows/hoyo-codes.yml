@@ -1,6 +1,9 @@
 name: Genshin & Star Rail Codes
 
 on:
+  schedule:
+    - cron: "*/5 * * * *"
+
   workflow_dispatch:
 
 concurrency:
@@ -39,10 +42,10 @@ jobs:
 
 
       # ==========================================
-      # CALCULER LE PROCHAIN LANCEMENT
+      # CALCULER LES HORAIRES
       # ==========================================
 
-      - name: Calculer le prochain lancement
+      - name: Préparer le statut
         run: |
 
           STARTED_AT=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
@@ -51,17 +54,6 @@ jobs:
 
           echo "STARTED_AT=$STARTED_AT" >> "$GITHUB_ENV"
           echo "NEXT_SEARCH_AT=$NEXT_SEARCH_AT" >> "$GITHUB_ENV"
-
-          echo "Recherche commencée : $STARTED_AT"
-          echo "Prochaine recherche prévue : $NEXT_SEARCH_AT"
-
-
-      # ==========================================
-      # STATUT : RECHERCHE EN COURS
-      # ==========================================
-
-      - name: Statut - Recherche en cours
-        run: |
 
           cat > status.json << EOF
           {
@@ -72,9 +64,7 @@ jobs:
           EOF
 
           git add status.json
-
           git commit -m "Bot status: searching"
-
           git push origin main
 
 
@@ -100,7 +90,7 @@ jobs:
 
 
       # ==========================================
-      # LANCER LE BOT
+      # LANCER LE SCRAPER / BOT
       # ==========================================
 
       - name: Lancer le bot
@@ -111,7 +101,7 @@ jobs:
 
 
       # ==========================================
-      # SAUVEGARDER LES CODES CONNUS
+      # SAUVEGARDER LES CODES
       # ==========================================
 
       - name: Sauvegarder les codes connus
@@ -127,7 +117,7 @@ jobs:
 
 
       # ==========================================
-      # GARANTIR 30 SECONDES DE STATUT RECHERCHE
+      # GARANTIR 30 SECONDES DE RECHERCHE
       # ==========================================
 
       - name: Maintenir le statut recherche
@@ -140,14 +130,19 @@ jobs:
           ELAPSED=$((NOW - START))
 
           if [ "$ELAPSED" -lt 30 ]; then
+
             WAIT=$((30 - ELAPSED))
-            echo "Maintien du statut recherche pendant $WAIT secondes..."
+
+            echo "Recherche terminée."
+            echo "Maintien du statut recherche pendant $WAIT secondes."
+
             sleep "$WAIT"
+
           fi
 
 
       # ==========================================
-      # STATUT : RECHERCHE TERMINÉE
+      # STATUT : ATTENTE
       # ==========================================
 
       - name: Statut - Recherche terminée

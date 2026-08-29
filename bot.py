@@ -1,8 +1,8 @@
 import os
 import asyncio
+import discord
 import json
 import urllib.request
-import discord
 from datetime import datetime, timezone
 
 
@@ -19,17 +19,17 @@ TOKEN = (
 
 
 # ==========================================
-# CONFIGURATION GITHUB
+# CONFIGURATION
 # ==========================================
 
 GITHUB_OWNER = "Malva59"
 GITHUB_REPO = "automation-project"
 
-# Vérification de l'état GitHub toutes les 60 secondes
-CHECK_INTERVAL = 60
+# GitHub est vérifié toutes les 30 secondes
+CHECK_INTERVAL = 30
 
-# Le Cron Job lance une recherche toutes les 5 minutes
-SEARCH_INTERVAL = 5
+# Ton Cron Job lance une recherche toutes les 5 minutes
+SEARCH_INTERVAL = 5 * 60
 
 
 # ==========================================
@@ -51,7 +51,7 @@ intents = discord.Intents.none()
 
 
 # ==========================================
-# FONCTIONS GITHUB
+# GITHUB
 # ==========================================
 
 def get_latest_workflow():
@@ -81,7 +81,10 @@ def get_latest_workflow():
                 response.read().decode("utf-8")
             )
 
-        runs = data.get("workflow_runs", [])
+        runs = data.get(
+            "workflow_runs",
+            []
+        )
 
         if not runs:
             return None
@@ -98,42 +101,26 @@ def get_latest_workflow():
 
 
 # ==========================================
-# CALCUL DU TEMPS
+# CONVERSION DATE
 # ==========================================
 
-def get_minutes_remaining(completed_at):
+def parse_github_date(date_string):
 
-    if not completed_at:
-        return SEARCH_INTERVAL
+    if not date_string:
+        return None
 
     try:
 
-        completed_time = datetime.fromisoformat(
-            completed_at.replace("Z", "+00:00")
-        )
-
-        next_search = (
-            completed_time.timestamp()
-            + SEARCH_INTERVAL * 60
-        )
-
-        now = datetime.now(
-            timezone.utc
-        ).timestamp()
-
-        remaining = next_search - now
-
-        if remaining <= 0:
-            return 0
-
-        # Arrondi vers le haut
-        return int(
-            (remaining + 59) // 60
+        return datetime.fromisoformat(
+            date_string.replace(
+                "Z",
+                "+00:00"
+            )
         )
 
     except Exception:
 
-        return SEARCH_INTERVAL
+        return None
 
 
 # ==========================================
@@ -149,121 +136,171 @@ class HoyoBot(discord.Client):
             f"Connecté en tant que {self.user}"
         )
         print("Bot H24 en ligne.")
-        print("GitHub Actions s'occupe des codes.")
+        print("Surveillance de GitHub Actions.")
         print("========================================")
 
-        # Lance la surveillance GitHub
+        # Statut initial
+        await self.change_presence(
+            activity=discord.Game(
+                name="⏱️ Prochaine recherche dans 5 min"
+            )
+        )
+
+        # Lance la surveillance
         self.loop.create_task(
-            self.update_status()
+            monitor_github()
         )
 
 
-    # ======================================
-    # STATUT DISCORD
-    # ======================================
+# ==========================================
+# SURVEILLANCE GITHUB
+# ==========================================
 
-    async def update_status(self):
+async def monitor_github():
 
-        await self.wait_until_ready()
+    await client.wait_until_ready()
 
-        while not self.is_closed():
+    last_run_id = None
 
-            try:
+    while not client.is_closed():
 
-                latest_run = await asyncio.to_thread(
-                    get_latest_workflow
+        try:
+
+            workflow = await asyncio.to_thread(
+                get_latest_workflow
+            )
+
+
+            if workflow is None:
+
+                await asyncio.sleep(
+                    CHECK_INTERVAL
+                )
+
+                continue
+
+
+            run_id = workflow.get(
+                "id"
+            )
+
+            status = workflow.get(
+                "status"
+            )
+
+            conclusion = workflow.get(
+                "conclusion"
+            )
+
+
+            # ==================================
+            # NOUVEAU WORKFLOW
+            # ==================================
+
+            if run_id != last_run_id:
+
+                last_run_id = run_id
+
+                print(
+                    f"Nouveau workflow détecté : {run_id}"
                 )
 
 
-                # ==================================
-                # AUCUN WORKFLOW TROUVÉ
-                # ==================================
+            # ==================================
+            # WORKFLOW EN COURS
+            # ==================================
 
-                if latest_run is None:
+            if status in {
+                "queued",
+                "in_progress"
+            }:
 
-                    await self.change_presence(
+                print(
+                    "GitHub Actions : recherche en cours."
+                )
+
+                await client.change_presence(
+                    activity=discord.Game(
+                        name="🔎 Recherche de nouveaux codes..."
+                    )
+                )
+
+
+            # ==================================
+            # WORKFLOW TERMINÉ
+            # ==================================
+
+            else:
+
+                completed_at = parse_github_date(
+                    workflow.get(
+                        "updated_at"
+                    )
+                )
+
+                if completed_at is None:
+
+                    await client.change_presence(
                         activity=discord.Game(
                             name="⏱️ Prochaine recherche dans 5 min"
                         )
                     )
 
-
                 else:
 
-                    status = latest_run.get(
-                        "status"
+                    next_search = (
+                        completed_at.timestamp()
+                        + SEARCH_INTERVAL
+                    )
+
+                    now = datetime.now(
+                        timezone.utc
+                    ).timestamp()
+
+                    remaining = (
+                        next_search - now
                     )
 
 
                     # ==================================
-                    # RECHERCHE EN COURS
+                    # PROCHAINE RECHERCHE IMMINENTE
                     # ==================================
 
-                    if status in {
-                        "queued",
-                        "in_progress"
-                    }:
+                    if remaining <= 0:
 
-                        print(
-                            "GitHub Actions : "
-                            "recherche en cours."
-                        )
-
-                        await self.change_presence(
+                        await client.change_presence(
                             activity=discord.Game(
                                 name="🔎 Recherche de nouveaux codes..."
                             )
                         )
 
 
-                    # ==================================
-                    # RECHERCHE TERMINÉE
-                    # ==================================
-
                     else:
 
-                        completed_at = latest_run.get(
-                            "updated_at"
+                        minutes = int(
+                            (remaining + 59) // 60
                         )
 
-                        minutes = get_minutes_remaining(
-                            completed_at
+                        await client.change_presence(
+                            activity=discord.Game(
+                                name=(
+                                    f"⏱️ Prochaine recherche "
+                                    f"dans {minutes} min"
+                                )
+                            )
                         )
 
 
-                        # Si la prochaine recherche
-                        # est imminente
-                        if minutes <= 0:
+        except Exception as error:
 
-                            await self.change_presence(
-                                activity=discord.Game(
-                                    name="🔎 Recherche de nouveaux codes..."
-                                )
-                            )
-
-                        else:
-
-                            await self.change_presence(
-                                activity=discord.Game(
-                                    name=(
-                                        f"⏱️ Prochaine recherche "
-                                        f"dans {minutes} min"
-                                    )
-                                )
-                            )
-
-
-            except Exception as error:
-
-                print(
-                    f"Erreur statut : {error}"
-                )
-
-
-            # Vérification toutes les minutes
-            await asyncio.sleep(
-                CHECK_INTERVAL
+            print(
+                f"Erreur surveillance GitHub : {error}"
             )
+
+
+        await asyncio.sleep(
+            CHECK_INTERVAL
+        )
 
 
 # ==========================================

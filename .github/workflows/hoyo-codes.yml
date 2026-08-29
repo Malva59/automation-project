@@ -29,6 +29,42 @@ jobs:
 
 
       # ==========================================
+      # CONFIGURER GIT
+      # ==========================================
+
+      - name: Configurer Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+
+      # ==========================================
+      # SIGNALER LE DÉBUT DE LA RECHERCHE
+      # ==========================================
+
+      - name: Statut - Recherche en cours
+        run: |
+
+          STARTED_AT=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+          NEXT_SEARCH_AT=$(date -u -d "+5 minutes" +"%Y-%m-%dT%H:%M:%SZ")
+
+          cat > status.json << EOF
+          {
+            "status": "searching",
+            "started_at": "$STARTED_AT",
+            "next_search_at": "$NEXT_SEARCH_AT"
+          }
+          EOF
+
+          git add status.json
+
+          git commit -m "Bot status: searching"
+
+          git push origin main
+
+
+      # ==========================================
       # INSTALLER PYTHON
       # ==========================================
 
@@ -67,12 +103,38 @@ jobs:
       - name: Sauvegarder les codes connus
         run: |
 
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
           git add .
 
           git diff --cached --quiet || git commit -m "Update known Genshin and Star Rail codes"
+
+          git pull --rebase origin main
+
+          git push origin main
+
+
+      # ==========================================
+      # SIGNALER LA FIN DE LA RECHERCHE
+      # ==========================================
+
+      - name: Statut - Recherche terminée
+        if: always()
+        run: |
+
+          COMPLETED_AT=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+          NEXT_SEARCH_AT=$(date -u -d "+5 minutes" +"%Y-%m-%dT%H:%M:%SZ")
+
+          cat > status.json << EOF
+          {
+            "status": "waiting",
+            "completed_at": "$COMPLETED_AT",
+            "next_search_at": "$NEXT_SEARCH_AT"
+          }
+          EOF
+
+          git add status.json
+
+          git diff --cached --quiet || git commit -m "Bot status: waiting"
 
           git pull --rebase origin main
 

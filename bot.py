@@ -1,319 +1,438 @@
 import os
 import asyncio
 import discord
-import json
-import urllib.request
-from datetime import datetime, timezone
+
+from scraper import scrape_all_codes
+from database import get_new_codes, mark_code_as_known
 
 
-# ==========================================
-# TOKEN DISCORD
-# ==========================================
+# ==================================================
+# CONFIGURATION
+# ==================================================
 
 TOKEN = (
-    os.getenv("TOKEN")
-    or os.getenv("DISCORD_TOKEN")
+    os.getenv("DISCORD_TOKEN")
+    or os.getenv("TOKEN")
     or os.getenv("BOT_TOKEN")
-    or os.getenv("TOKEN_DU_BOT")
 )
 
+CHANNEL_ID = 1494316922534367352
 
-# ==========================================
-# CONFIGURATION
-# ==========================================
-
-GITHUB_OWNER = "Malva59"
-GITHUB_REPO = "automation-project"
-
-# GitHub est vérifié toutes les 30 secondes
-CHECK_INTERVAL = 30
-
-# Ton Cron Job lance une recherche toutes les 5 minutes
-SEARCH_INTERVAL = 5 * 60
+# Rôle testé et fonctionnel
+ROLE_ID = 1543027793695088640
 
 
-# ==========================================
-# VÉRIFICATION DU TOKEN
-# ==========================================
+# ==================================================
+# LIENS D'ACTIVATION
+# ==================================================
 
-if not TOKEN:
-    raise RuntimeError(
-        "TOKEN Discord introuvable. "
-        "Vérifie le champ TOKEN DU BOT dans Startup."
-    )
+ACTIVATION_URLS = {
+    "Genshin Impact":
+        "https://genshin.hoyoverse.com/fr/gift?code=",
 
-
-# ==========================================
-# INTENTS
-# ==========================================
-
-intents = discord.Intents.none()
+    "Honkai: Star Rail":
+        "https://hsr.hoyoverse.com/gift?code=",
+}
 
 
-# ==========================================
-# GITHUB
-# ==========================================
+# ==================================================
+# COULEURS DES EMBEDS
+# ==================================================
 
-def get_latest_workflow():
+EMBED_COLORS = {
+    "Genshin Impact": 0x8E7CC3,
+    "Honkai: Star Rail": 0x5B9BD5,
+}
 
-    url = (
-        f"https://api.github.com/repos/"
-        f"{GITHUB_OWNER}/{GITHUB_REPO}/actions/runs"
-        f"?per_page=1"
-    )
 
-    request = urllib.request.Request(
-        url,
-        headers={
-            "Accept": "application/vnd.github+json",
-            "User-Agent": "Anteiku-Hoyo-Bot"
-        }
-    )
+# ==================================================
+# EMOJIS
+# ==================================================
+
+EMOJIS = {
+    "Genshin Impact": "🎮",
+    "Honkai: Star Rail": "🚂",
+}
+
+
+# ==================================================
+# VÉRIFICATION DES CODES
+# ==================================================
+
+async def check_codes():
+
+    print("========================================")
+    print("Recherche des codes...")
+    print("========================================")
 
     try:
 
-        with urllib.request.urlopen(
-            request,
-            timeout=10
-        ) as response:
+        # Le scraper utilise Playwright.
+        # On le lance dans un thread pour éviter
+        # de bloquer la boucle asyncio de Discord.
 
-            data = json.loads(
-                response.read().decode("utf-8")
-            )
-
-        runs = data.get(
-            "workflow_runs",
-            []
+        all_codes = await asyncio.to_thread(
+            scrape_all_codes
         )
 
-        if not runs:
-            return None
+        codes_to_publish = {}
 
-        return runs[0]
+        # ==============================================
+        # RECHERCHE DES NOUVEAUX CODES
+        # ==============================================
 
-    except Exception as error:
+        for game, codes in all_codes.items():
+
+            print(
+                f"{game} : "
+                f"{len(codes)} codes trouvés"
+            )
+
+            new_codes = get_new_codes(
+                game,
+                codes
+            )
+
+            print(
+                f"{game} : "
+                f"{len(new_codes)} nouveaux codes"
+            )
+
+            if new_codes:
+                codes_to_publish[game] = new_codes
+
+
+        # ==============================================
+        # AUCUN NOUVEAU CODE
+        # ==============================================
+
+        if not codes_to_publish:
+
+            print("Aucun nouveau code.")
+
+            return
+
+
+        total = sum(
+            len(codes)
+            for codes in codes_to_publish.values()
+        )
 
         print(
-            f"Erreur GitHub API : {error}"
+            f"{total} nouveau(x) code(s) à publier."
         )
 
-        return None
 
+        # ==============================================
+        # RÉCUPÉRATION DU SALON DISCORD
+        # ==============================================
 
-# ==========================================
-# CONVERSION DATE
-# ==========================================
-
-def parse_github_date(date_string):
-
-    if not date_string:
-        return None
-
-    try:
-
-        return datetime.fromisoformat(
-            date_string.replace(
-                "Z",
-                "+00:00"
-            )
+        channel = await client.fetch_channel(
+            CHANNEL_ID
         )
 
-    except Exception:
-
-        return None
-
-
-# ==========================================
-# BOT
-# ==========================================
-
-class HoyoBot(discord.Client):
-
-    async def on_ready(self):
-
-        print("========================================")
         print(
-            f"Connecté en tant que {self.user}"
-        )
-        print("Bot H24 en ligne.")
-        print("Surveillance de GitHub Actions.")
-        print("========================================")
-
-        # Statut initial
-        await self.change_presence(
-            activity=discord.Game(
-                name="⏱️ Prochaine recherche dans 5 min"
-            )
-        )
-
-        # Lance la surveillance
-        self.loop.create_task(
-            monitor_github()
+            f"Salon trouvé : #{channel.name}"
         )
 
 
-# ==========================================
-# SURVEILLANCE GITHUB
-# ==========================================
+        # ==============================================
+        # PUBLICATION DES CODES
+        # ==============================================
 
-async def monitor_github():
+        for game, codes in codes_to_publish.items():
 
-    await client.wait_until_ready()
+            for item in codes:
 
-    last_run_id = None
+                code = item["code"]
 
-    while not client.is_closed():
-
-        try:
-
-            workflow = await asyncio.to_thread(
-                get_latest_workflow
-            )
-
-
-            if workflow is None:
-
-                await asyncio.sleep(
-                    CHECK_INTERVAL
+                rewards = item.get(
+                    "rewards",
+                    []
                 )
 
-                continue
-
-
-            run_id = workflow.get(
-                "id"
-            )
-
-            status = workflow.get(
-                "status"
-            )
-
-            conclusion = workflow.get(
-                "conclusion"
-            )
-
-
-            # ==================================
-            # NOUVEAU WORKFLOW
-            # ==================================
-
-            if run_id != last_run_id:
-
-                last_run_id = run_id
-
-                print(
-                    f"Nouveau workflow détecté : {run_id}"
+                emoji = EMOJIS.get(
+                    game,
+                    "🎁"
                 )
 
 
-            # ==================================
-            # WORKFLOW EN COURS
-            # ==================================
+                # ==========================================
+                # LIEN D'ACTIVATION
+                # ==========================================
 
-            if status in {
-                "queued",
-                "in_progress"
-            }:
-
-                print(
-                    "GitHub Actions : recherche en cours."
+                activation_url = (
+                    ACTIVATION_URLS[game]
+                    + code
                 )
 
-                await client.change_presence(
-                    activity=discord.Game(
-                        name="🔎 Recherche de nouveaux codes..."
+
+                # ==========================================
+                # CRÉATION DE L'EMBED
+                # ==========================================
+
+                embed = discord.Embed(
+
+                    title=(
+                        f"{emoji} "
+                        f"Nouveau code {game} !"
+                    ),
+
+                    description=(
+                        "🎁 **Un nouveau code "
+                        "vient d'être découvert !**"
+                    ),
+
+                    color=EMBED_COLORS.get(
+                        game,
+                        0x5865F2
                     )
                 )
 
 
-            # ==================================
-            # WORKFLOW TERMINÉ
-            # ==================================
+                # ==========================================
+                # CODE
+                # ==========================================
 
-            else:
+                embed.add_field(
 
-                completed_at = parse_github_date(
-                    workflow.get(
-                        "updated_at"
-                    )
+                    name="🎟️ Code",
+
+                    value=f"```{code}```",
+
+                    inline=False
                 )
 
-                if completed_at is None:
 
-                    await client.change_presence(
-                        activity=discord.Game(
-                            name="⏱️ Prochaine recherche dans 5 min"
+                # ==========================================
+                # RÉCOMPENSES
+                # ==========================================
+
+                if rewards:
+
+                    rewards_text = "\n".join(
+                        f"• {reward}"
+                        for reward in rewards
+                    )
+
+                    # Limite Discord pour un champ d'embed
+                    if len(rewards_text) > 1024:
+
+                        rewards_text = (
+                            rewards_text[:1021]
+                            + "..."
                         )
+
+                    embed.add_field(
+
+                        name="🎁 Récompenses",
+
+                        value=rewards_text,
+
+                        inline=False
                     )
 
                 else:
 
-                    next_search = (
-                        completed_at.timestamp()
-                        + SEARCH_INTERVAL
-                    )
+                    embed.add_field(
 
-                    now = datetime.now(
-                        timezone.utc
-                    ).timestamp()
+                        name="🎁 Récompenses",
 
-                    remaining = (
-                        next_search - now
+                        value="Non précisées",
+
+                        inline=False
                     )
 
 
-                    # ==================================
-                    # PROCHAINE RECHERCHE IMMINENTE
-                    # ==================================
+                # ==========================================
+                # FOOTER
+                # ==========================================
 
-                    if remaining <= 0:
+                embed.set_footer(
 
-                        await client.change_presence(
-                            activity=discord.Game(
-                                name="🔎 Recherche de nouveaux codes..."
-                            )
-                        )
-
-
-                    else:
-
-                        minutes = int(
-                            (remaining + 59) // 60
-                        )
-
-                        await client.change_presence(
-                            activity=discord.Game(
-                                name=(
-                                    f"⏱️ Prochaine recherche "
-                                    f"dans {minutes} min"
-                                )
-                            )
-                        )
+                    text=(
+                        "Anteiku Hoyo codes • "
+                        "Malva"
+                    )
+                )
 
 
-        except Exception as error:
+                # ==========================================
+                # BOUTON D'ACTIVATION
+                # ==========================================
 
-            print(
-                f"Erreur surveillance GitHub : {error}"
-            )
+                view = discord.ui.View(
+                    timeout=None
+                )
+
+                button = discord.ui.Button(
+
+                    label="🎁 Utiliser le code",
+
+                    style=discord.ButtonStyle.link,
+
+                    url=activation_url
+                )
+
+                view.add_item(button)
 
 
-        await asyncio.sleep(
-            CHECK_INTERVAL
+                # ==========================================
+                # MENTION DU RÔLE
+                # ==========================================
+
+                role_mention = (
+                    f"<@&{ROLE_ID}>"
+                )
+
+                allowed_mentions = (
+                    discord.AllowedMentions(
+                        roles=True
+                    )
+                )
+
+
+                # ==========================================
+                # ENVOI SUR DISCORD
+                # ==========================================
+
+                await channel.send(
+
+                    content=role_mention,
+
+                    embed=embed,
+
+                    view=view,
+
+                    allowed_mentions=allowed_mentions
+                )
+
+
+                print(
+                    f"Code publié "
+                    f"({game}) : {code}"
+                )
+
+                print(
+                    f"Rôle pingé : {ROLE_ID}"
+                )
+
+
+                # ==========================================
+                # SAUVEGARDE DU CODE
+                # ==========================================
+
+                mark_code_as_known(
+                    game,
+                    code
+                )
+
+
+        print(
+            "Tous les nouveaux codes ont été traités."
         )
 
 
-# ==========================================
-# CRÉATION DU BOT
-# ==========================================
+    except Exception as error:
+
+        print(
+            "ERREUR pendant la vérification :"
+        )
+
+        print(error)
+
+
+# ==================================================
+# BOT DISCORD
+# ==================================================
+
+class HoyoBot(discord.Client):
+
+    async def setup_hook(self):
+
+        # Rien à lancer ici.
+        #
+        # GitHub Actions doit effectuer UNE SEULE
+        # vérification puis fermer le bot.
+
+        pass
+
+
+    async def on_ready(self):
+
+        print("========================================")
+
+        print(
+            f"Connecté en tant que {self.user}"
+        )
+
+        print(
+            "Recherche des codes..."
+        )
+
+        print("========================================")
+
+
+        # ==============================================
+        # UNE SEULE VÉRIFICATION
+        # ==============================================
+
+        await check_codes()
+
+
+        # ==============================================
+        # FERMETURE PROPRE
+        # ==============================================
+
+        print("========================================")
+
+        print(
+            "Vérification terminée."
+        )
+
+        print(
+            "Fermeture du bot..."
+        )
+
+        print("========================================")
+
+
+        await self.close()
+
+
+# ==================================================
+# VÉRIFICATION DU TOKEN
+# ==================================================
+
+if not TOKEN:
+
+    raise RuntimeError(
+
+        "TOKEN Discord introuvable. "
+
+        "Vérifie le secret Discord "
+        "dans GitHub."
+    )
+
+
+# ==================================================
+# INTENTS
+# ==================================================
+
+intents = discord.Intents.none()
+
+
+# ==================================================
+# CRÉATION DU CLIENT
+# ==================================================
 
 client = HoyoBot(
     intents=intents
 )
 
 
-# ==========================================
+# ==================================================
 # DÉMARRAGE
-# ==========================================
+# ==================================================
 
 client.run(TOKEN)

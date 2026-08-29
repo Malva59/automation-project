@@ -1,6 +1,6 @@
 name: Genshin & Star Rail Codes
 
-
+on:
   workflow_dispatch:
 
 concurrency:

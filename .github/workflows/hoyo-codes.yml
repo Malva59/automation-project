@@ -39,7 +39,7 @@ jobs:
 
 
       # ==========================================
-      # SIGNALER LE DÉBUT DE LA RECHERCHE
+      # STATUT : RECHERCHE EN COURS
       # ==========================================
 
       - name: Statut - Recherche en cours
@@ -47,7 +47,13 @@ jobs:
 
           STARTED_AT=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
+          # Prochaine recherche = 5 minutes après
+          # le début de cette recherche
           NEXT_SEARCH_AT=$(date -u -d "+5 minutes" +"%Y-%m-%dT%H:%M:%SZ")
+
+          # Rend la variable disponible pour
+          # les étapes suivantes
+          echo "NEXT_SEARCH_AT=$NEXT_SEARCH_AT" >> "$GITHUB_ENV"
 
           cat > status.json << EOF
           {
@@ -113,7 +119,7 @@ jobs:
 
 
       # ==========================================
-      # SIGNALER LA FIN DE LA RECHERCHE
+      # STATUT : RECHERCHE TERMINÉE
       # ==========================================
 
       - name: Statut - Recherche terminée
@@ -122,7 +128,12 @@ jobs:
 
           COMPLETED_AT=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
-          NEXT_SEARCH_AT=$(date -u -d "+5 minutes" +"%Y-%m-%dT%H:%M:%SZ")
+          # IMPORTANT :
+          # On conserve NEXT_SEARCH_AT calculé
+          # au début du workflow.
+          #
+          # On ne rajoute PAS 5 minutes à
+          # l'heure de fin.
 
           cat > status.json << EOF
           {

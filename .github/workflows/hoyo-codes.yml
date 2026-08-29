@@ -39,33 +39,6 @@ jobs:
 
 
       # ==========================================
-      # CALCULER LES HORAIRES
-      # ==========================================
-
-      - name: Préparer le statut
-        run: |
-
-          STARTED_AT=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-
-          NEXT_SEARCH_AT=$(date -u -d "+5 minutes" +"%Y-%m-%dT%H:%M:%SZ")
-
-          echo "STARTED_AT=$STARTED_AT" >> "$GITHUB_ENV"
-          echo "NEXT_SEARCH_AT=$NEXT_SEARCH_AT" >> "$GITHUB_ENV"
-
-          cat > status.json << EOF
-          {
-            "status": "searching",
-            "started_at": "$STARTED_AT",
-            "next_search_at": "$NEXT_SEARCH_AT"
-          }
-          EOF
-
-          git add status.json
-          git commit -m "Bot status: searching"
-          git push origin main
-
-
-      # ==========================================
       # INSTALLER PYTHON
       # ==========================================
 
@@ -87,79 +60,28 @@ jobs:
 
 
       # ==========================================
-      # LANCER LE SCRAPER / BOT
+      # LANCER LE BOT
       # ==========================================
 
       - name: Lancer le bot
         env:
           DISCORD_TOKEN: ${{ secrets.DISCORD_TOKEN }}
+          DISCORD_CHANNEL_ID: "1494316922534367352"
         run: |
           python bot.py
 
 
       # ==========================================
-      # SAUVEGARDER LES CODES
+      # SAUVEGARDER LES MODIFICATIONS
       # ==========================================
 
-      - name: Sauvegarder les codes connus
+      - name: Sauvegarder les modifications
+        if: always()
         run: |
 
           git add .
 
-          git diff --cached --quiet || git commit -m "Update known Genshin and Star Rail codes"
-
-          git pull --rebase origin main
-
-          git push origin main
-
-
-      # ==========================================
-      # GARANTIR 30 SECONDES DE RECHERCHE
-      # ==========================================
-
-      - name: Maintenir le statut recherche
-        if: always()
-        run: |
-
-          NOW=$(date +%s)
-          START=$(date -d "$STARTED_AT" +%s)
-
-          ELAPSED=$((NOW - START))
-
-          if [ "$ELAPSED" -lt 30 ]; then
-
-            WAIT=$((30 - ELAPSED))
-
-            echo "Recherche terminée."
-            echo "Maintien du statut recherche pendant $WAIT secondes."
-
-            sleep "$WAIT"
-
-          fi
-
-
-      # ==========================================
-      # STATUT : ATTENTE
-      # ==========================================
-
-      - name: Statut - Recherche terminée
-        if: always()
-        run: |
-
-          COMPLETED_AT=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-
-          cat > status.json << EOF
-          {
-            "status": "waiting",
-            "started_at": "$STARTED_AT",
-            "completed_at": "$COMPLETED_AT",
-            "next_search_at": "$NEXT_SEARCH_AT"
-          }
-          EOF
-
-          git add status.json
-
-          git diff --cached --quiet || git commit -m "Bot status: waiting"
+          git diff --cached --quiet || git commit -m "Update codes and bot status"
 
           git pull --rebase origin main
 
@@ -174,6 +96,5 @@ jobs:
         if: always()
         run: |
           echo "========================================"
-          echo "Recherche terminée."
-          echo "Prochaine recherche : $NEXT_SEARCH_AT"
+          echo "Workflow terminé."
           echo "========================================"

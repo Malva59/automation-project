@@ -1,5 +1,6 @@
 {
-  "status": "searching",
+  "status": "waiting",
   "started_at": "2026-08-30T06:06:13Z",
-  "next_search_at": "2026-08-30T06:11:13Z"
+  "next_search_at": "2026-08-30T06:11:13Z",
+  "completed_at": "2026-08-30T06:06:43Z"
 }
